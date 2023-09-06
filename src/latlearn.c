@@ -36,18 +36,6 @@ enum
   PAGE_TOTAL
 };
 
-#define MOVE_MENU_CURSOR(pos, offset)                                                                                   \
-  do                                                                                                                    \
-  {                                                                                                                     \
-    if (!is_in_submenu)                                                                                                 \
-    {                                                                                                                   \
-      if ((pos).menu_pos + offset >= 1 && (pos).menu_pos + offset <= n_choices)                                         \
-        (pos).menu_pos += offset;                                                                                       \
-    }                                                                                                                   \
-    else if ((pos).submenu_pos + offset >= 1 && (pos).submenu_pos + offset <= choices[(pos).menu_pos].n_entrys_submenu) \
-      (pos).submenu_pos += offset;                                                                                      \
-  } while (0);
-
 #define LIST_OF_PAGES(...)                                                   \
   X(auto_test, "Statistiques", "Francais -> Latin", "Latin -> Francais")     \
   __VA_OPT__(, )                                                             \
@@ -89,6 +77,7 @@ struct tm get_time(void);
 void print_date(const struct tm tm);
 void print_menu(WINDOW *menu_win, side_bar_pos *pos);
 int handle_input_side_bar(int ch, side_bar_pos *pos);
+void move_menu_cursor(side_bar_pos *pos, int offset);
 
 int main(int argc, char **argv)
 {
@@ -101,10 +90,11 @@ int main(int argc, char **argv)
   noecho();
   cbreak();
   WINDOW *side_bar = newwin(LINES, SIDE_BAR_WIDTH, starty, startx);
-  print_menu(side_bar, &(side_bar_pos){1, 1});
+
+  side_bar_pos pos = {.menu_pos = 0, .submenu_pos = 0};
+  print_menu(side_bar, &pos);
 
   int page = 0;
-  side_bar_pos pos = {.menu_pos = 1, .submenu_pos = 1};
   while (1)
   {
     int ch = wgetch(side_bar);
@@ -112,7 +102,7 @@ int main(int argc, char **argv)
     {
       page = handle_input_side_bar(ch, &pos);
 
-      if (page == 4)
+      if (page == QUIT)
         break;
     }
 
@@ -164,18 +154,18 @@ void print_menu(WINDOW *menu_win, side_bar_pos *pos)
   box(menu_win, 0, 0);
   for (uint32_t i = 0; i < n_choices; ++i, ++y)
   {
-    if (pos->menu_pos == i + 1)
+    if (pos->menu_pos == i)
       wattron(menu_win, A_REVERSE);
 
     mvwprintw(menu_win, y, x, "%s", choices[i].title);
 
-    if (pos->menu_pos == i + 1)
+    if (pos->menu_pos == i)
     {
       wattroff(menu_win, A_REVERSE);
 
       ++y;
       for (uint32_t j = 0; j < choices[i].n_entrys_submenu; ++j, ++y)
-        mvwprintw(menu_win, y, x, "%s %s", pos->submenu_pos == j + 1 && is_in_submenu ? "->" : " +", choices[i].submenus[j]);
+        mvwprintw(menu_win, y, x, "%s %s", pos->submenu_pos == j && is_in_submenu ? "->" : " +", choices[i].submenus[j]);
     }
   }
   wrefresh(menu_win);
@@ -186,13 +176,11 @@ int handle_input_side_bar(int ch, side_bar_pos *pos)
   switch (ch)
   {
   case 'j':
-    // *highlight = (*highlight >= n_choices) ? 1 : *highlight + 1;
-    MOVE_MENU_CURSOR(*pos, 1);
+    move_menu_cursor(pos, 1);
     break;
 
   case 'k':
-    // *highlight = (*highlight <= 1) ? n_choices : *highlight - 1;
-    MOVE_MENU_CURSOR(*pos, -1);
+    move_menu_cursor(pos, -1);
     break;
 
   case 10:
@@ -208,4 +196,17 @@ int handle_input_side_bar(int ch, side_bar_pos *pos)
   }
 
   return 0;
+}
+
+void move_menu_cursor(side_bar_pos *pos, int offset)
+{
+  if (!is_in_submenu)
+  {
+    if ((pos->menu_pos != 0 || offset >= 0) && pos->menu_pos + offset < n_choices)
+      pos->menu_pos += offset;
+  }
+  else if ((pos->submenu_pos != 0 || offset >= 0) && pos->submenu_pos + offset < choices[pos->menu_pos].n_entrys_submenu)
+    pos->submenu_pos += offset;
+
+  return;
 }
