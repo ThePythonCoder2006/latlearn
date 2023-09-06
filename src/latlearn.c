@@ -1,6 +1,18 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
+#include <inttypes.h>
 #include <time.h>
+
+typedef struct qt_struct
+{
+  char *question;
+  char *ans;
+  struct tm start;
+  uint8_t success;
+} qt;
+
+const uint32_t intervals[] = {1, 3, 7, 14, 30, 3 * 30, 6 * 30}; // intervals for when questions will be asked, in days
 
 struct tm get_time(void);
 void print_date(const struct tm tm);
@@ -10,10 +22,6 @@ int main(int argc, char **argv)
   (void)argc, (void)argv;
 
   const struct tm tm = get_time();
-
-  printf("today is the : ");
-  print_date(tm);
-  putchar('\n');
 
   printf("Hello latlearn !\n");
   return EXIT_SUCCESS;
