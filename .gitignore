@@ -1,6 +1,4 @@
 *.exe
 *.a
 
-include
-PDCurses
 .vscode/settings.json
