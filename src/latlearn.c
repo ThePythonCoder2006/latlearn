@@ -8,12 +8,24 @@
 
 #include "curses.h"
 
+// side bar defs ------------------------------
 uint32_t startx = 0, starty = 0;
 
-const char *choices[] = {"Auto-test",
-                         "Conjugaison",
-                         "Declinaison",
-                         "Quit"};
+typedef struct side_bar_pos_s
+{
+  uint32_t menu_pos, submenu_pos;
+} side_bar_pos;
+
+#define SIDE_BAR_WIDTH (30)
+
+typedef char side_menu_text[SIDE_BAR_WIDTH];
+
+typedef struct choice_s
+{
+  side_menu_text title;
+  side_menu_text *submenus;
+  uint32_t n_entrys_submenu;
+} choice;
 
 enum
 {
@@ -24,7 +36,44 @@ enum
   PAGE_TOTAL
 };
 
+#define MOVE_MENU_CURSOR(pos, offset)                                                                                   \
+  do                                                                                                                    \
+  {                                                                                                                     \
+    if (!is_in_submenu)                                                                                                 \
+    {                                                                                                                   \
+      if ((pos).menu_pos + offset >= 1 && (pos).menu_pos + offset <= n_choices)                                         \
+        (pos).menu_pos += offset;                                                                                       \
+    }                                                                                                                   \
+    else if ((pos).submenu_pos + offset >= 1 && (pos).submenu_pos + offset <= choices[(pos).menu_pos].n_entrys_submenu) \
+      (pos).submenu_pos += offset;                                                                                      \
+  } while (0);
+
+#define LIST_OF_PAGES(...)                                                   \
+  X(auto_test, "Statistiques", "Francais -> Latin", "Latin -> Francais")     \
+  __VA_OPT__(, )                                                             \
+  X(declinaison, "Statistiques", "Cas -> Declinaison", "Declinaison -> Cas") \
+  __VA_OPT__(, )                                                             \
+  X(conjugaison, "Statistiques", "Pers -> Conjugaison", "Conjugaison -> Pers")
+
+#define X(name, ...) side_menu_text name##_submenu[] = {__VA_ARGS__};
+LIST_OF_PAGES()
+#undef X
+
+#define X(name, ...)                                                                                                   \
+  {                                                                                                                    \
+    .title = #name, .submenus = name##_submenu, .n_entrys_submenu = sizeof(name##_submenu) / sizeof(name##_submenu[0]) \
+  }
+
+const choice choices[PAGE_TOTAL] = {
+    LIST_OF_PAGES(a),
+    {.title = "Quit"}};
+#undef X
+
 const int n_choices = PAGE_TOTAL;
+
+uint8_t is_in_side_bar = 1, is_in_submenu = 0;
+
+// learning defs -----------------------------
 
 typedef struct qt_struct
 {
@@ -34,14 +83,12 @@ typedef struct qt_struct
   uint8_t success;
 } qt;
 
-#define SIDE_BAR_WIDTH (30)
-
 const uint32_t intervals[] = {1, 3, 7, 14, 30, 3 * 30, 6 * 30}; // intervals for when questions will be asked, in days
 
 struct tm get_time(void);
 void print_date(const struct tm tm);
-void print_menu(WINDOW *menu_win, uint32_t highlight);
-int handle_input_side_bar(int ch, int *highlight);
+void print_menu(WINDOW *menu_win, side_bar_pos *pos);
+int handle_input_side_bar(int ch, side_bar_pos *pos);
 
 int main(int argc, char **argv)
 {
@@ -49,57 +96,38 @@ int main(int argc, char **argv)
 
   // const struct tm tm = get_time();
 
-  uint8_t is_in_side_bar = 1;
-
   initscr();
   clear();
   noecho();
   cbreak();
-  WINDOW *side_bar = subwin(stdscr, LINES, SIDE_BAR_WIDTH, 0, 0);
+  WINDOW *side_bar = newwin(LINES, SIDE_BAR_WIDTH, starty, startx);
+  print_menu(side_bar, &(side_bar_pos){1, 1});
 
-  side_bar = newwin(LINES, SIDE_BAR_WIDTH, starty, startx);
-  print_menu(side_bar, 1);
-
-  int page = 0, highlight = 1;
+  int page = 0;
+  side_bar_pos pos = {.menu_pos = 1, .submenu_pos = 1};
   while (1)
   {
     int ch = wgetch(side_bar);
     if (is_in_side_bar)
     {
-      page = handle_input_side_bar(ch, &highlight);
-      if (page)
-        is_in_side_bar = 0;
+      page = handle_input_side_bar(ch, &pos);
 
       if (page == 4)
         break;
     }
-    else
+
+    if (ch == 'h')
     {
-      if (ch == 'h')
-        is_in_side_bar = 1;
+      if (is_in_side_bar)
+        is_in_submenu = 0;
+      else
+        is_in_submenu = 1;
+
+      is_in_side_bar = 1;
     }
 
-    switch (page)
-    {
-    case PAGE_AUTO_TEST:
-      print_auto_test();
-      break;
-
-    case PAGE_CONJUGATE:
-      print_conjugate();
-      break;
-
-    case PAGE_DECLINATE:
-      print_declinate();
-      break;
-
-    default:
-      fprintf(stderr, "[ERROR] Unreachable !!\n");
-      assert(0 && "unreachable");
-      break;
-    }
-
-    print_menu(side_bar, is_in_side_bar ? highlight : 0);
+    print_menu(side_bar, &pos);
+    mvprintw(0, 50, "%u, %u", pos.menu_pos, pos.submenu_pos);
   }
 
   endwin();
@@ -126,41 +154,54 @@ void print_date(const struct tm tm)
   return;
 }
 
-void print_menu(WINDOW *menu_win, uint32_t highlight)
+void print_menu(WINDOW *menu_win, side_bar_pos *pos)
 {
+  wclear(menu_win);
   int x, y;
 
   x = 2;
   y = 2;
   box(menu_win, 0, 0);
-  for (uint32_t i = 0; i < n_choices; ++i)
+  for (uint32_t i = 0; i < n_choices; ++i, ++y)
   {
-    if (highlight == i + 1)
-    {
+    if (pos->menu_pos == i + 1)
       wattron(menu_win, A_REVERSE);
-      mvwprintw(menu_win, y + i, x, "%s", choices[i]);
+
+    mvwprintw(menu_win, y, x, "%s", choices[i].title);
+
+    if (pos->menu_pos == i + 1)
+    {
       wattroff(menu_win, A_REVERSE);
+
+      ++y;
+      for (uint32_t j = 0; j < choices[i].n_entrys_submenu; ++j, ++y)
+        mvwprintw(menu_win, y, x, "%s %s", pos->submenu_pos == j + 1 && is_in_submenu ? "->" : " +", choices[i].submenus[j]);
     }
-    else
-      mvwprintw(menu_win, y + i, x, "%s", choices[i]);
   }
   wrefresh(menu_win);
 }
 
-int handle_input_side_bar(int ch, int *highlight)
+int handle_input_side_bar(int ch, side_bar_pos *pos)
 {
   switch (ch)
   {
   case 'j':
-    *highlight = (*highlight >= n_choices) ? 1 : *highlight + 1;
+    // *highlight = (*highlight >= n_choices) ? 1 : *highlight + 1;
+    MOVE_MENU_CURSOR(*pos, 1);
     break;
 
   case 'k':
-    *highlight = (*highlight <= 1) ? n_choices : *highlight - 1;
+    // *highlight = (*highlight <= 1) ? n_choices : *highlight - 1;
+    MOVE_MENU_CURSOR(*pos, -1);
     break;
 
   case 10:
-    return *highlight;
+    if (is_in_submenu)
+      is_in_submenu = is_in_side_bar = 0;
+    else
+      is_in_submenu = 1;
+
+    return pos->menu_pos;
 
   default:
     break;
