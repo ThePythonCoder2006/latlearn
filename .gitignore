@@ -2,3 +2,4 @@
 *.a
 
 .vscode/settings.json
+./main_pre.c

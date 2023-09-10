@@ -10,9 +10,11 @@ SRC_FILES = ./$(SRC_DIR)/latlearn.c
 EXE_DIR = bin
 EXE_FILE = ./$(EXE_DIR)/main
 
-main:
-	$(CC) -o $(EXE_FILE) $(SRC_FILES) $(CFLAGS) $(LK_FLAGS)
+main: comp
 	$(EXE_FILE)
+
+comp:
+	$(CC) -o $(EXE_FILE) $(SRC_FILES) $(CFLAGS) $(LK_FLAGS)
 
 db:
 	$(CC) -o $(EXE_FILE) $(SRC_FILES) $(DB_FLAGS) $(LK_FLAGS)
